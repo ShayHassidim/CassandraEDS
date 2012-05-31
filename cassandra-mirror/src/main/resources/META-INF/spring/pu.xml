@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:os-core="http://www.openspaces.org/schema/core" xmlns:os-events="http://www.openspaces.org/schema/events"
+	xmlns:tx="http://www.springframework.org/schema/tx" xmlns:os-remoting="http://www.openspaces.org/schema/remoting"
+	xmlns:os-sla="http://www.openspaces.org/schema/sla"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+      http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-3.0.xsd
+      http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx-2.0.xsd        
+      http://www.openspaces.org/schema/core http://www.openspaces.org/schema/core/openspaces-core.xsd
+      http://www.openspaces.org/schema/events http://www.openspaces.org/schema/events/openspaces-events.xsd
+      http://www.openspaces.org/schema/remoting http://www.openspaces.org/schema/remoting/openspaces-remoting.xsd
+		">
+
+	<bean id="propertiesConfigurer"
+		class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+		<!-- defaults -->
+		<property name="properties">
+			<props>
+				<prop key="cassandra.driver">org.apache.cassandra.cql.jdbc.CassandraDriver</prop>
+				<prop key="cassandra.url">jdbc:cassandra://127.0.0.1:9160/test</prop>
+				<prop key="cassandra.user">default</prop>
+				<prop key="cassandra.password">default</prop>
+				<prop key="space.name">mySpace</prop>
+				<prop key="space.partitions">1</prop>
+				<prop key="space.backups">0</prop>
+			</props>
+		</property>
+	</bean>
+
+	<!-- CONNECTION POOL -->
+	<bean id="boneCP" class="com.jolbox.bonecp.BoneCPDataSource"
+		destroy-method="close">
+		<property name="driverClass" value="${cassandra.driver}"/>
+		<property name="jdbcUrl" value="${cassandra.url}"/>
+		<property name="username" value="${cassandra.user}" />
+		<property name="password" value="${cassandra.password}" />
+		<!-- These no doubt need tweaking -->
+		<property name="idleConnectionTestPeriod" value="60" />
+		<property name="idleMaxAge" value="240" />
+		<property name="maxConnectionsPerPartition" value="1000" />
+		<property name="minConnectionsPerPartition" value="10" />
+		<property name="partitionCount" value="3" />
+		<property name="acquireIncrement" value="5" />
+		<property name="statementsCacheSize" value="100" />
+		<property name="releaseHelperThreads" value="3" />
+	</bean>
+
+	<!-- CASSANDRA EDS -->
+	<bean id="fieldSerializer" class="org.openspaces.cassandraeds.JsonFieldSerializer" />
+	<bean id="cassandraEDS" class="org.openspaces.cassandraeds.CassandraPersisterEDS">
+		<constructor-arg ref="boneCP" />
+		<constructor-arg ref="fieldSerializer" />
+	</bean>
+	
+	<!-- MIRROR -->
+ 	<os-core:mirror id="mirror" url="/./mirror-service"
+		external-data-source="cassandraEDS" operation-grouping="group-by-replication-bulk">
+	    <os-core:source-space name="${space.name}" backups="${space.backups}" partitions="${space.partitions}" />
+		<os-core:properties>
+			<props>
+				<prop key="space-config.external-data-source.data-class">com.j_spaces.core.IGSEntry</prop>
+				<prop key="space-config.persistent.StorageAdapterClass">com.j_spaces.sadapter.datasource.DataAdapter"</prop>
+			</props>
+		</os-core:properties>
+	</os-core:mirror>
+
+
+</beans>
