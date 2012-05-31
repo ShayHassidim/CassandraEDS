@@ -1,3 +1,5 @@
+[![Build Status](https://secure.travis-ci.org/OpenSpaces/CassandraEDS.png)](http://travis-ci.org/OpenSpaces/CassandraEDS)
+
 <h1>Cassandra OpenSpaces External Data Source</h1>
 The Cassandra OpenSpaces EDS implementation allows applications to use push the long term data into
 Cassandra database in an asynchronous manner without impacting the application response time and also
