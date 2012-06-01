@@ -10,3 +10,4 @@ The OpenSpaces Cassandra EDS leveraging the Cassandra CQL and the Cassandra JDBC
 Every application write or take operation against the IMDG is delegated into the Mirror 
 service that is using the Cassandra Mirror implementation to execute the CQL statement and push
 the changes into the Cassandra database.
+
