@@ -17,6 +17,13 @@
 		<module>cassandra-mirror</module>
 		<module>myspace</module>
 	</modules>
+	
+	<repositories>
+		<repository>
+			<id>org.openspaces</id>
+			<url>http://maven-repository.openspaces.org</url>
+		</repository>
+	</repositories>
 
 	<dependencyManagement>
 		<dependencies>
