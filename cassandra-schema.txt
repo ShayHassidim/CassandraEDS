@@ -1,4 +1,3 @@
-drop keyspace test;
 create keyspace test;
 use test;
 
