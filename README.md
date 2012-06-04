@@ -12,4 +12,4 @@ service that is using the Cassandra Mirror implementation to execute the CQL sta
 the changes into the Cassandra database.
 
 
-
+See the [Cassandra OpenSpaces External Data Source](http://www.gigaspaces.com/wiki/display/SBP/Cassandra+External+Data+Source) for detailed running instrcutions.
