@@ -71,6 +71,7 @@ public class CassandraPersisterEDS implements ManagedDataSource<Object>,BulkData
 					String deleteQL = "DELETE FROM " + clazzName
 					+ " WHERE KEY = " + ID;
 					try {
+						log.info("removing :  "+deleteQL);
 						executeCQL(con, deleteQL);
 					} catch (Exception e) {
 						e.printStackTrace();
@@ -128,7 +129,7 @@ public class CassandraPersisterEDS implements ManagedDataSource<Object>,BulkData
 					}
 					insertQL = insertQLBuf.deleteCharAt(insertQLBuf.length()-1).append(")").toString();
 					try {
-						log.info("inserting:  "+insertQL);
+						log.info("inserting: "+insertQL);
 						executeCQL(con, insertQL);
 					} catch (Exception e) {
 						e.printStackTrace();
@@ -138,6 +139,16 @@ public class CassandraPersisterEDS implements ManagedDataSource<Object>,BulkData
 				case BulkItem.UPDATE:
 					fldCount = item.getFieldsNames().length;
 					StringBuilder updateQL=new StringBuilder("");
+					updateQL.append("UPDATE ").append(clazzName).append(" SET");
+					for (int i = 0; i < fldCount ; i++) {
+						updateQL.
+						append(" '").
+						append(item.getFieldsNames()[i]).
+						append("'=").
+						append(getValue(item.getFieldsNames()[i],item.getFieldsValues()[i])).
+						append(",");
+					}
+/*
 					if (updateSQLCache.containsKey(clazzName))
 					{
 						updateQL.append(updateSQLCache.get(clazzName));
@@ -151,11 +162,13 @@ public class CassandraPersisterEDS implements ManagedDataSource<Object>,BulkData
 						}
 						updateSQLCache.put(clazzName, updateQL.toString());
 					}
+*/					
 					updateQL.deleteCharAt(updateQL.length()-1);
 
 					updateQL.append(" WHERE KEY=").append(ID);
 					try {
-						log.info("updating sql= "+updateQL.toString());
+						log.info("updating: "+updateQL.toString());
+						
 						executeCQL(con, updateQL.toString());
 					} catch (Exception e) {
 						e.printStackTrace();
@@ -196,7 +209,7 @@ public class CassandraPersisterEDS implements ManagedDataSource<Object>,BulkData
 		else
 		{
 			//Note - presumes non-collection fields
-			log.info("getValue val type:"+val.getClass().getName());
+			//log.info("getValue val type:"+val.getClass().getName());
 			if(val.getClass().getName().startsWith("java.lang.")){
 				String str = val.toString();
 				if (str.indexOf("'") > 0)
