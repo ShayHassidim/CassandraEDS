@@ -2,13 +2,12 @@ package com.test;
 
 import java.util.Random;
 
-import org.openspaces.cassandraeds.CassandraPersisterEDS;
 import org.openspaces.core.GigaSpace;
 import org.openspaces.core.GigaSpaceConfigurer;
-import org.openspaces.core.cluster.ClusterInfo;
 import org.openspaces.core.space.UrlSpaceConfigurer;
 
-import com.j_spaces.core.IGSEntry;
+import com.gigaspaces.document.SpaceDocument;
+import com.gigaspaces.metadata.SpaceTypeDescriptorBuilder;
 
 public class CassandraEDSTest implements Runnable{
 
@@ -24,6 +23,8 @@ public class CassandraEDSTest implements Runnable{
 		simpleTest();
 		
 //		complexTest();
+		
+		//new CassandraEDSTest().documentTest();
 		
 	}
 
@@ -52,8 +53,30 @@ public class CassandraEDSTest implements Runnable{
 		new CassandraEDSTest().run();
 	}
 	
+	public void documentTest(){
+		/*gigaspace.getTypeManager().registerTypeDescriptor(new SpaceTypeDescriptorBuilder("com_test_MyData").
+				idProperty("id").
+				addFixedProperty("fixed",String.class).
+				create()
+				);*/
+		
+		SpaceDocument doc=new SpaceDocument("com_test_MyData");
+		doc.setProperty("id", 9999);
+		doc.setProperty("first","f1");
+		doc.setProperty("last","l1");
+		doc.setProperty("age",30);
+		
+		gigaspace.write(doc);
+		
+		
+		if(true)return;
+		
+	}
+	
 	@Override
 	public void run() {
+		
+
 		MyData o = new MyData();
 				
 		Random rand = new Random();

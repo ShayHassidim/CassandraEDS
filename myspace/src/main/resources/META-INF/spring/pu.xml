@@ -12,22 +12,104 @@
       http://www.openspaces.org/schema/remoting http://www.openspaces.org/schema/remoting/openspaces-remoting.xsd
 		">
 
-	<context:component-scan base-package="com.gigaspaces" />
-	<os-core:annotation-support />
-
 	<bean id="propertiesConfigurer"
 		class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+		<!-- defaults -->
 		<property name="properties">
 			<props>
+				<prop key="cassandra.driver">org.apache.cassandra.cql.jdbc.CassandraDriver</prop>
+				<prop key="cassandra.url">jdbc:cassandra://127.0.0.1:9160/test</prop>
+				<prop key="cassandra.user">default</prop>
+				<prop key="cassandra.password">default</prop>
+				<prop key="space.name">mySpace</prop>
+				<prop key="space.partitions">1</prop>
+				<prop key="space.backups">0</prop>
 			</props>
 		</property>
 	</bean>
 	
-	<os-core:space id="space"  url="/./mySpace" mirror="true">
+	<os-core:space id="space" url="/./mySpace" schema="persistent"
+		external-data-source="cassandraEDS" mirror="true">
 		<os-core:properties>
 			<props>
+				<prop key="space-config.engine.cache_policy">1</prop>
+				<prop key="space-config.external-data-source.usage">read-only</prop>
 			</props>
 		</os-core:properties>
 	</os-core:space>
+
+	<!-- CASSANDRA EDS -->
+ 	<bean id="fieldSerializer" class="org.openspaces.cassandraeds.JsonFieldSerializer" />
+	<bean id="cassandraEDS" class="org.openspaces.cassandraeds.CassandraEDS">
+		<constructor-arg ref="boneCP" />
+		<constructor-arg ref="fieldSerializer" />
+		<constructor-arg>
+			<array>
+				<value>com.test.MyData</value>
+			</array>
+		</constructor-arg>
+	</bean>
+
+<!-- SAMPLE SPACEDOCUMENT CONFIG -->
+<!-- 
+	<bean id="space" class="org.openspaces.core.space.UrlSpaceFactoryBean">
+		<property name="url" value="/./mySpace"/>
+		<property name="mirror" value="true"/>
+		<property name="schema" value="persistent"/>
+		<property name="externalDataSource"><ref bean="cassandraEDS"/></property>
+		<property name="spaceTypes">
+			<list><ref bean="mydata"/></list>
+		</property>
+		<property name="properties">
+			<props>
+				<prop key="space-config.engine.cache_policy">1</prop>
+				<prop key="space-config.external-data-source.usage">read-only</prop>
+			</props>
+		</property>
+	</bean>
 	
+	<bean id="fieldSerializer" class="org.openspaces.cassandraeds.JsonFieldSerializer" />
+	<bean id="cassandraEDS" class="org.openspaces.cassandraeds.CassandraEDS">
+		<constructor-arg ref="boneCP" />
+		<constructor-arg ref="fieldSerializer" />
+		<constructor-arg>
+			<list>
+				<ref bean="mydata"/>
+			</list>
+		</constructor-arg>
+	</bean>
+	
+	<bean name="mydata" class="org.openspaces.core.config.GigaSpaceDocumentTypeDescriptorFactoryBean">
+		<property name="typeName" value="com_test_MyData"/>
+		<property name="idProperty">
+           <bean class="org.openspaces.core.config.SpaceIdProperty">
+	         <property name="propertyName" value="id"/>    	    
+           </bean>
+		</property>
+	</bean>
+-->
+<!-- END SPACEDOCUMENT CONFIG -->
+	
+	<!-- CONNECTION POOL -->
+
+	<bean id="boneCP" class="com.jolbox.bonecp.BoneCPDataSource"
+		destroy-method="close">
+		<property name="driverClass" value="${cassandra.driver}" />
+		<property name="jdbcUrl" value="${cassandra.url}" />
+		<property name="username" value="${cassandra.user}" />
+		<property name="password" value="${cassandra.password}" />
+		<property name="idleConnectionTestPeriod" value="60" />
+		<property name="idleMaxAge" value="240" />
+		<property name="maxConnectionsPerPartition" value="20" />
+		<property name="minConnectionsPerPartition" value="10" />
+		<property name="partitionCount" value="3" />
+		<property name="acquireIncrement" value="5" />
+		<property name="statementsCacheSize" value="100" />
+		<property name="releaseHelperThreads" value="3" />
+	</bean>
+
+
+
+
+
 </beans>

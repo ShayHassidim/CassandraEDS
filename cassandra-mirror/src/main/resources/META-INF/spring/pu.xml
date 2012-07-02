@@ -47,13 +47,13 @@
 	</bean>
 
 	<!-- CASSANDRA EDS -->
-	<bean id="fieldSerializer" class="org.openspaces.cassandraeds.JsonFieldSerializer" />
-	<bean id="cassandraEDS" class="org.openspaces.cassandraeds.CassandraPersisterEDS">
+ 	<bean id="fieldSerializer" class="org.openspaces.cassandraeds.JsonFieldSerializer" />
+	<bean id="cassandraEDS" class="org.openspaces.cassandraeds.CassandraEDS">
 		<constructor-arg ref="boneCP" />
 		<constructor-arg ref="fieldSerializer" />
 	</bean>
 	
-	<!-- MIRROR -->
+	
  	<os-core:mirror id="mirror" url="/./mirror-service"
 		external-data-source="cassandraEDS" operation-grouping="group-by-replication-bulk">
 	    <os-core:source-space name="${space.name}" backups="${space.backups}" partitions="${space.partitions}" />

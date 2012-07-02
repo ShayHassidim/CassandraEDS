@@ -5,12 +5,12 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.logging.Logger;
 
 import com.gigaspaces.datasource.DataIterator;
+import com.gigaspaces.document.SpaceDocument;
+import com.gigaspaces.metadata.SpaceTypeDescriptor;
 import com.j_spaces.core.client.SQLQuery;
 
 /**
@@ -26,28 +26,122 @@ public class DataIterators {
 		return new MultiClassIterator(classes,fieldSerializer,cn);
 	}
 
-	public static <T> DataIterator<T> newTemplateIterator(T template, FieldSerializer fieldSerializer, Connection cn){
-		return new TemplateIterator<T>(template,fieldSerializer,cn);
-	}
-
-	public static <T> SQLIterator<T> newSQLIterator(SQLQuery<T> query,FieldSerializer fieldSerializer,List<Class<?>> classes,Connection cn){
+	public static <T> SQLIterator<T> newSQLIterator(SQLQuery<T> query,FieldSerializer fieldSerializer,Class<?>[] classes,Connection cn){
 		return new SQLIterator<T>(query,fieldSerializer,classes,cn);
+	}
+	
+	public static SQLDocumentIterator newSQLDocumentIterator(SQLQuery<Object> query,FieldSerializer fieldSerializer,SpaceTypeDescriptor[] desc,Connection cn){
+		return new SQLDocumentIterator(query,fieldSerializer,desc,cn);
+	}
+	
+	public static DataIterator<Object> newMultiDocumentIterator(
+			SpaceTypeDescriptor[] doctypes,
+			FieldSerializer fieldSerializer, Connection cn) {
+		return new MultiDocumentIterator(doctypes,fieldSerializer,cn);
+	}
+	
+	public static class SQLDocumentIterator implements DataIterator<Object>
+	{
+		private ResultSet rs;
+		private FieldSerializer fieldSerializer;
+		private Connection conn;
+		private SpaceTypeDescriptor[] desc;
+		private int curIndex=0;
+
+		public SQLDocumentIterator(SQLQuery<Object> query, FieldSerializer fieldSerializer, SpaceTypeDescriptor[] desc,Connection cn){
+			try{
+				this.fieldSerializer=fieldSerializer;
+				this.conn=cn;
+				this.desc=desc;
+			}
+			catch(Exception e){
+				if(e instanceof RuntimeException)throw (RuntimeException)e;
+				else throw new RuntimeException(e);
+			}
+		}
+
+		@Override
+		public boolean hasNext() {
+			try{
+				if(curIndex<desc.length-1)return false;
+				return !rs.isLast();
+			}catch(SQLException e){
+				throw new RuntimeException(e);
+			}
+		}
+
+		@Override
+		public SpaceDocument next() {
+			try{
+				while(rs.next()){
+					SpaceDocument res=Util.deserializeDocument(desc[curIndex],rs,fieldSerializer);
+					if(res!=null)return res;
+				}
+				//find next resultset with data
+				while(true){
+					rs=nextResultset();
+					if(rs==null)return null;
+					if(!rs.next())continue;
+					while(rs.next()){
+						SpaceDocument res=Util.deserializeDocument(desc[curIndex],rs,fieldSerializer);
+						if(res!=null)return res;
+					}
+				}
+			}
+			catch(SQLException e){
+				throw new RuntimeException(e);
+			}
+
+		}
+
+		@Override
+		public void remove() {
+			// NOOP
+		}
+
+		@Override
+		public void close() {
+			try{
+				if(conn!=null)conn.close();
+			}catch(Exception e){
+			}
+		}
+		
+		private ResultSet nextResultset(){
+			curIndex++;
+			if(curIndex>=desc.length)return null;
+
+			try{ rs.close();}catch(Exception e){}
+
+			try{
+				Statement statement = conn.createStatement();
+				ResultSet rs=statement.executeQuery("select * from "+desc[curIndex].getTypeName());
+				statement.close();
+				return rs;
+			}
+			catch(Exception e){
+				if(e instanceof RuntimeException)throw((RuntimeException)e);
+				else throw new RuntimeException(e);
+			}
+		}
+
 	}
 
 	public static class SQLIterator<T> implements DataIterator<T>{
 		private Class<T> clazz;
-		private List<Class<?>> classes=new ArrayList<Class<?>>();
+		private List<Class<?>> classes=null;
 		private ResultSet rs;
 		private FieldSerializer fieldSerializer;
 		private Connection conn;
 		private int curIndex=0;
 
 		@SuppressWarnings("unchecked")
-		public SQLIterator(SQLQuery<T> query, FieldSerializer fieldSerializer, List<Class<?>> classes,Connection cn){
+		public SQLIterator(SQLQuery<T> query, FieldSerializer fieldSerializer, Class<?>[] classes,Connection cn){
 			try{
 				this.fieldSerializer=fieldSerializer;
 				this.conn=cn;
 				this.clazz=(Class<T>)Class.forName(query.getTypeName());
+				this.classes=new ArrayList<Class<?>>();
 				for(Class<?> c:classes){
 					if(clazz.isAssignableFrom(c)){
 						this.classes.add(c);
@@ -110,25 +204,27 @@ public class DataIterators {
 
 		@Override
 		public T next() {
-			
+
 			try{
-				if(rs.next()){
-					return (T)Util.deserializeObject(classes.get(curIndex),rs,fieldSerializer);
+				while(rs.next()){
+					T res=(T)Util.deserializeObject(classes.get(curIndex),rs,fieldSerializer);
+					if(res!=null)return res;
 				}
-				else{
-					//find next resultset with data
-					while(true){
-						rs=nextResultset();
-						if(rs==null)return null;
-						if(!rs.next())continue;
-						return (T)Util.deserializeObject(classes.get(curIndex),rs,fieldSerializer);
+				//find next resultset with data
+				while(true){
+					rs=nextResultset();
+					if(rs==null)return null;
+					if(!rs.next())continue;
+					while(rs.next()){
+						T res=(T)Util.deserializeObject(classes.get(curIndex),rs,fieldSerializer);
+						if(res!=null)return res;
 					}
 				}
 			}
 			catch(SQLException e){
 				throw new RuntimeException(e);
 			}
-			
+
 		}
 
 		public void remove() {
@@ -142,11 +238,11 @@ public class DataIterators {
 			}catch(Exception e){
 			}
 		}
-		
+
 		private ResultSet nextResultset(){
 			curIndex++;
 			if(curIndex>=classes.size())return null;
-			
+
 			try{ rs.close();}catch(Exception e){}
 
 			try{
@@ -160,97 +256,7 @@ public class DataIterators {
 				else throw new RuntimeException(e);
 			}
 		}
-		
-	}
 
-	/**
-	 * Iterates over a template.
-	 * 
-	 * @author DeWayne
-	 *
-	 * @param <T>
-	 */
-	public static class TemplateIterator<T> implements DataIterator<T>{
-		private static final Logger log=Logger.getLogger(TemplateIterator.class.getName());
-		private T template;
-		private FieldSerializer fieldSerializer;
-		private Connection cn;
-		private ResultSet rs;
-
-		public TemplateIterator(T template,FieldSerializer fieldSerializer,Connection cn){
-			this.template=template;
-			this.fieldSerializer=fieldSerializer;
-			this.cn=cn;
-			this.rs=query();
-		}
-
-		public boolean hasNext() {
-			try{
-				return !rs.isLast();
-			}catch(SQLException e){
-				throw new RuntimeException(e);
-			}
-		}
-
-		public T next() {
-			try{
-				if(rs.next()){
-					return (T) Util.deserializeObject(template.getClass(),rs,fieldSerializer);
-				}
-				else{
-					return null;
-				}
-			}
-			catch(SQLException e){
-				throw new RuntimeException(e);
-			}
-		}
-
-		public void remove() {
-			// NOOP
-		}
-
-		public void close() {
-			try{
-				rs.close();
-				cn.close();
-			}catch(Exception e){
-			}
-		}
-		private ResultSet query(){
-			try{
-				Statement statement = cn.createStatement();
-				List<FieldInfo> fields=Util.getFields(template.getClass());
-				List<Object> values=new ArrayList<Object>();
-				Set<Integer> skip=new HashSet<Integer>();
-				for(int i=0;i<fields.size();i++){
-					FieldInfo f=fields.get(i);
-					Object val=f.getField().get(template);
-					if(val!=null)values.add(val);
-					else skip.add(i);
-				}
-				StringBuilder sb=new StringBuilder("select * from ").
-				append(template.getClass().getName().replaceAll("\\.", "_")).
-				append(" where ");
-				for(int i=0;i<values.size();i++){
-					if(skip.contains(i))continue;
-					boolean needsQuotes=(values.get(i) instanceof String);
-					sb.append(fields.get(i).getField().getName()).
-					append("=");
-					if(needsQuotes)sb.append("'");
-					sb.append(values.get(i).toString());
-					if(needsQuotes)sb.append("'");
-					if(i<values.size()-1)sb.append(" and ");
-				}
-				ResultSet rs=statement.executeQuery(sb.toString());
-				statement.close();
-				return rs;
-			}
-			catch(Exception e){
-				if(e instanceof RuntimeException)throw((RuntimeException)e);
-				else throw new RuntimeException(e);
-			}
-		}
 	}
 
 	/**
@@ -286,16 +292,19 @@ public class DataIterators {
 
 		public Object next() {
 			try{
-				if(rs.next()){
-					return Util.deserializeObject(classes.get(curIndex),rs,fieldSerializer);
+				while(rs.next()){
+					Object res=Util.deserializeObject(classes.get(curIndex),rs,fieldSerializer);
+					if(res!=null)return res;
 				}
-				else{
-					//find next resultset with data
-					while(true){
-						rs=nextResultset();
-						if(rs==null)return null;
-						if(!rs.next())continue;
-						return Util.deserializeObject(classes.get(curIndex),rs,fieldSerializer);
+
+				//find next resultset with data
+				while(true){
+					rs=nextResultset();
+					if(rs==null)return null;
+					if(!rs.next())continue;
+					while(rs.next()){
+						Object res=Util.deserializeObject(classes.get(curIndex),rs,fieldSerializer);
+						if(res!=null)return res;
 					}
 				}
 			}
@@ -323,6 +332,90 @@ public class DataIterators {
 			try{
 				Statement statement = cn.createStatement();
 				ResultSet rs=statement.executeQuery("select * from "+classes.get(curIndex).getName().replaceAll("\\.", "_"));
+				statement.close();
+				return rs;
+			}
+			catch(Exception e){
+				if(e instanceof RuntimeException)throw((RuntimeException)e);
+				else throw new RuntimeException(e);
+			}
+		}
+
+	}
+
+	/**
+	 * Makes the assumption that type names that include "." are java classes
+	 * @author DeWayne
+	 *
+	 */
+	public static class MultiDocumentIterator implements DataIterator<Object>{
+		private static final Logger log=Logger.getLogger(MultiClassIterator.class.getName());
+		private SpaceTypeDescriptor[] doctypes=null;
+		private final FieldSerializer fieldSerializer;
+		private final Connection cn;
+		private ResultSet rs;
+		private int curIndex=-1;
+		
+		public MultiDocumentIterator(
+				SpaceTypeDescriptor[] doctypes,
+				FieldSerializer fieldSerializer, Connection cn) {
+			this.doctypes=doctypes;
+			this.fieldSerializer=fieldSerializer;
+			this.cn=cn;
+			this.rs=nextResultset();
+		}
+
+		public boolean hasNext() {
+			try{
+				if(curIndex<doctypes.length-1)return false;
+				return !rs.isLast();
+			}catch(SQLException e){
+				throw new RuntimeException(e);
+			}
+		}
+
+		public Object next() {
+			try{
+				while(rs.next()){
+					Object res=Util.deserializeDocument(doctypes[curIndex],rs,fieldSerializer);
+					if(res!=null)return res;
+				}
+
+				//find next resultset with data
+				while(true){
+					rs=nextResultset();
+					if(rs==null)return null;
+					if(!rs.next())continue;
+					while(rs.next()){
+						Object res=Util.deserializeDocument(doctypes[curIndex],rs,fieldSerializer);
+						if(res!=null)return res;
+					}
+				}
+			}
+			catch(SQLException e){
+				throw new RuntimeException(e);
+			}
+		}
+
+		public void remove() {
+			//NOOP
+		}
+
+		public void close() {
+			try{
+				if(rs!=null)rs.close();
+				if(cn!=null)cn.close();
+			}catch(Exception e){
+			}
+		}
+
+		private ResultSet nextResultset(){
+			curIndex++;
+			if(curIndex>=doctypes.length)return null;
+
+			try{
+				Statement statement = cn.createStatement();
+				ResultSet rs=statement.executeQuery("select * from "+doctypes[curIndex].getTypeName());
 				statement.close();
 				return rs;
 			}

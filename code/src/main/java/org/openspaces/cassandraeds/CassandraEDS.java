@@ -1,40 +1,93 @@
 package org.openspaces.cassandraeds;
 
-import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.gigaspaces.annotation.pojo.SpaceId;
 import com.gigaspaces.datasource.BulkDataPersister;
 import com.gigaspaces.datasource.BulkItem;
 import com.gigaspaces.datasource.DataIterator;
 import com.gigaspaces.datasource.DataSourceException;
 import com.gigaspaces.datasource.ManagedDataSource;
+import com.gigaspaces.datasource.SQLDataProvider;
+import com.gigaspaces.metadata.SpaceTypeDescriptor;
 import com.j_spaces.core.IGSEntry;
+import com.j_spaces.core.client.SQLQuery;
 import com.jolbox.bonecp.BoneCPDataSource;
 
-public class CassandraPersisterEDS implements ManagedDataSource<Object>,BulkDataPersister{
-	private static final Logger log=Logger.getLogger(CassandraPersisterEDS.class.getName());
-	private Map<String,String> idMap=new HashMap<String,String>();
-	BoneCPDataSource connectionPool;
-	FieldSerializer fieldSerializer=null;
+/**
+ * Cassandra EDS.  Constructors define usage.  2 arg constructor for mirror eds.  3 arg constructors
+ * for space EDS.  Which one to use depends on whether using SpaceDocuments or POJOs.
+ * 
+ * @author DeWayne
+ *
+ */
+public class CassandraEDS implements ManagedDataSource<Object>,BulkDataPersister,SQLDataProvider<Object>{
+	private static final Logger log=Logger.getLogger(CassandraEDS.class.getName());
+	private final BoneCPDataSource connectionPool;
+	private final FieldSerializer fieldSerializer;
+	private final List<Class<?>> classes=new ArrayList<Class<?>>();
+	private SpaceTypeDescriptor[] doctypes;
 
 	ConcurrentHashMap<String, String> insertSQLCache = new ConcurrentHashMap<String, String> ();
 	ConcurrentHashMap<String, String> updateSQLCache = new ConcurrentHashMap<String, String> ();
-
-	public CassandraPersisterEDS(BoneCPDataSource connectionPool,FieldSerializer fs)throws Exception{
+	
+	/**
+	 * Constructor for mirror EDS
+	 * 
+	 */
+	public CassandraEDS(
+			BoneCPDataSource connectionPool,
+			FieldSerializer fs){
+		
 		this.connectionPool=connectionPool;
 		this.fieldSerializer=fs;
 	}
+			
 
+	/**
+	 * Constructor for POJO based space EDSs
+	 * 
+	 */
+	public CassandraEDS(
+			BoneCPDataSource connectionPool,
+			FieldSerializer fs,
+			String[] classes)
+			throws Exception
+			{
+				this.connectionPool=connectionPool;
+				this.fieldSerializer=fs;
+				for(String clazz:classes){
+					this.classes.add(Class.forName(clazz));
+				}
+	}
+	
+	/**
+	 * Constructor for SpaceDocument based space EDSs
+	 * 
+	 */
+	public CassandraEDS(
+			BoneCPDataSource connectionPool,
+			FieldSerializer fs,
+			SpaceTypeDescriptor[] doctypes)
+			throws Exception
+			{
+				this.connectionPool=connectionPool;
+				this.fieldSerializer=fs;
+				this.doctypes=doctypes;
+	}
+
+	
+
+	/**
+	 * Checks to see if Cassandra is listening.
+	 */
 	public void init(Properties properties) throws DataSourceException {
 		try{
 			Connection test=connectionPool.getConnection();
@@ -63,14 +116,19 @@ public class CassandraPersisterEDS implements ManagedDataSource<Object>,BulkData
 			for (BulkItem bulkItem : bulkItems) {
 				IGSEntry item = (IGSEntry) bulkItem.getItem();
 				String clazzName = item.getClassName().replaceAll("\\.", "_");
-
-				String ID=getId(item).toString();
+				
+				String ID=item.getFieldValue(item.getPrimaryKeyName()).toString();
+				
+				if(item.getFieldType(item.getPrimaryKeyName()).equals("java.lang.String")){
+					ID="'"+ID+"'";
+				}
 
 				switch (bulkItem.getOperation()) {
 				case BulkItem.REMOVE:
 					String deleteQL = "DELETE FROM " + clazzName
 					+ " WHERE KEY = " + ID;
 					try {
+						log.info("removing :  "+deleteQL);
 						executeCQL(con, deleteQL);
 					} catch (Exception e) {
 						e.printStackTrace();
@@ -78,30 +136,6 @@ public class CassandraPersisterEDS implements ManagedDataSource<Object>,BulkData
 
 					break;
 				case BulkItem.WRITE:
-					/**
-					 * This section will dynamically create column families.  Nice for testing,
-					 * not good for anything else.
-					 */
-					/*
-					if (!schema.contains(clazzName)); {
-						StringBuilder createQL =new StringBuilder(
-						"CREATE COLUMNFAMILY ")
-						.append(clazzName)
-						.append(" (KEY 'text' PRIMARY KEY ,");
-						for (int i=0;i<item.getFieldsNames().length;i++) {
-							createQL.append(" '").append(item.getFieldsNames()[i]).append("' 'text'").append(",");
-						}
-						createQL.deleteCharAt(createQL.length()-1);
-						createQL.append(") WITH comparator=text AND default_validation=text");
-
-						try{
-							executeCQL(con,createQL.toString()); 
-						}
-						catch (Exception e) {
-							e.printStackTrace(); 
-						} schema.add(clazzName);
-					}
-					 */
 
 					String insertQL = null;
 					int fldCount = item.getFieldsNames().length;
@@ -128,7 +162,7 @@ public class CassandraPersisterEDS implements ManagedDataSource<Object>,BulkData
 					}
 					insertQL = insertQLBuf.deleteCharAt(insertQLBuf.length()-1).append(")").toString();
 					try {
-						log.info("inserting:  "+insertQL);
+						log.info("inserting: "+insertQL);
 						executeCQL(con, insertQL);
 					} catch (Exception e) {
 						e.printStackTrace();
@@ -138,24 +172,21 @@ public class CassandraPersisterEDS implements ManagedDataSource<Object>,BulkData
 				case BulkItem.UPDATE:
 					fldCount = item.getFieldsNames().length;
 					StringBuilder updateQL=new StringBuilder("");
-					if (updateSQLCache.containsKey(clazzName))
-					{
-						updateQL.append(updateSQLCache.get(clazzName));
-					}
-					else
-					{
-						updateQL.append("UPDATE ").append(clazzName).append(" SET");
-
-						for (int i = 0; i < fldCount ; i++) {
-							updateQL.append(" '").append(item.getFieldsNames()[i]).append("'=").append(getValue(item.getFieldsNames()[i],item.getFieldsValues()[i])).append(",");
-						}
-						updateSQLCache.put(clazzName, updateQL.toString());
+					updateQL.append("UPDATE ").append(clazzName).append(" SET");
+					for (int i = 0; i < fldCount ; i++) {
+						updateQL.
+						append(" '").
+						append(item.getFieldsNames()[i]).
+						append("'=").
+						append(getValue(item.getFieldsNames()[i],item.getFieldsValues()[i])).
+						append(",");
 					}
 					updateQL.deleteCharAt(updateQL.length()-1);
 
 					updateQL.append(" WHERE KEY=").append(ID);
 					try {
-						log.info("updating sql= "+updateQL.toString());
+						log.info("updating: "+updateQL.toString());
+						
 						executeCQL(con, updateQL.toString());
 					} catch (Exception e) {
 						e.printStackTrace();
@@ -177,8 +208,32 @@ public class CassandraPersisterEDS implements ManagedDataSource<Object>,BulkData
 
 	@Override
 	public DataIterator<Object> initialLoad() throws DataSourceException {
-		return null;
+		Connection cn=null;
+		try {
+			cn=connectionPool.getConnection();
+
+			if (doctypes==null) return DataIterators.newMultiClassIterator(classes,fieldSerializer,cn);
+			else return DataIterators.newMultiDocumentIterator(doctypes,fieldSerializer,cn);
+		} catch (SQLException e) {
+			throw new DataSourceException(e);
+		}
 	}
+
+
+	@Override
+	public DataIterator<Object> iterator(SQLQuery<Object> query)throws DataSourceException {
+		Connection cn=null;
+		try{
+			cn=connectionPool.getConnection();
+		}
+		catch(Exception e){
+			if(e instanceof RuntimeException)throw (RuntimeException)e;
+			else throw new RuntimeException(e);
+		}
+		if (doctypes==null)return DataIterators.newSQLIterator(query, fieldSerializer,(Class<?>[])classes.toArray(), cn); 
+		else return DataIterators.newSQLDocumentIterator(query,fieldSerializer,doctypes,cn);
+	}
+
 
 	/**
 	 * Gets the string value of a field.  For non-java types,
@@ -196,7 +251,7 @@ public class CassandraPersisterEDS implements ManagedDataSource<Object>,BulkData
 		else
 		{
 			//Note - presumes non-collection fields
-			log.info("getValue val type:"+val.getClass().getName());
+			log.fine("getValue val type:"+val.getClass().getName());
 			if(val.getClass().getName().startsWith("java.lang.")){
 				String str = val.toString();
 				if (str.indexOf("'") > 0)
@@ -207,48 +262,11 @@ public class CassandraPersisterEDS implements ManagedDataSource<Object>,BulkData
 					return "'" + str + "'";
 			}
 			else{
-				return "'"+fieldSerializer.serialize(fieldName,val)+"'";
+				return "'"+fieldSerializer.serialize(val)+"'";
 			}
 		}
 	}
 
-	/**
-	 * Finds the field in the supplied class which is decorated with the SpaceId annotation
-	 * 
-	 * @param className
-	 * @return
-	 */
-	private String getIdFieldName(String className){
-		Class<?> cls=null;
-		String fieldName=idMap.get(className);
-		if(fieldName==null){
-			try {
-				cls=Class.forName(className);
-				for(Method m:cls.getMethods()){
-					if(m.getAnnotation(SpaceId.class)!=null){
-						fieldName=m.getName().substring(3,4).toLowerCase()+m.getName().substring(4);  //trim get/set
-						break;
-					}
-				}
-				if(fieldName==null){
-					throw new RuntimeException("class "+className+" has no @SpaceId");
-				}
-			} catch (ClassNotFoundException e) {
-				throw new RuntimeException(e);
-			}
-			idMap.put(className, fieldName);
-		}
-		return fieldName;
-
-	}
-
-	private Object getId(IGSEntry entry){
-		if(entry==null)return null;
-		String fname=getIdFieldName(entry.getClassName());
-		String quote="";
-		if(entry.getFieldType(fname).equals("java.lang.String"))quote="'";
-		return quote+entry.getFieldValue(fname)+quote;
-	}
 
 	private void executeCQL(Connection con, String cql) throws SQLException {
 		Statement statement = con.createStatement();

@@ -4,7 +4,10 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.Types;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -14,10 +17,14 @@ import java.util.logging.Logger;
 
 import org.apache.hadoop.conf.Configuration;
 
+import com.gigaspaces.document.SpaceDocument;
+import com.gigaspaces.metadata.SpacePropertyDescriptor;
+import com.gigaspaces.metadata.SpaceTypeDescriptor;
+
 public class Util {
 	private static final Logger log=Logger.getLogger(Util.class.getName());
 	private static final FieldInfoCache fieldCache=new FieldInfoCache();
-	
+
 	//So config can be set in Spring
 	public static Configuration newConfiguration(Properties props){
 		Configuration config=new Configuration();
@@ -27,7 +34,7 @@ public class Util {
 		}
 		return config;
 	}
-	
+
 	public static List<FieldInfo> getFields(Class<?> cls){
 		return fieldCache.getFields(cls);
 	}
@@ -35,25 +42,99 @@ public class Util {
 	public static <T> T deserializeObject(Class<T> clazz,ResultSet rs,FieldSerializer fieldSerializer){
 		try{
 			T obj=clazz.newInstance();
+			int colcnt=rs.getMetaData().getColumnCount();
+			if(colcnt==1)return null;
 			for(FieldInfo f:fieldCache.getFields(clazz)){
-				// Basic deserialization from string: assume class has valueOf method
-
-				if(f.getFieldType()==FieldInfo.FieldType.JAVA_LANG){
-					f.setValueFromString(obj, rs.getString(f.getField().getName()));
+				try{
+					// Basic deserialization from string: assume class has valueOf method
+					if(f.getFieldType()==FieldInfo.FieldType.JAVA_LANG){
+						f.setValueFromString(obj, rs.getString(f.getField().getName()));
+					}
+					else if(f.getFieldType()==FieldInfo.FieldType.USER){
+						//try the serializer
+						if(log.isLoggable(Level.FINE))log.fine("deserializing field:"+f.getField().getName());
+						if(log.isLoggable(Level.FINE))log.fine("val="+rs.getString(f.getField().getName()));
+						String fieldVal=rs.getString(f.getField().getName());
+						Object subobj=null;
+						if(fieldVal!=null){
+							subobj=fieldSerializer.deserialize(fieldVal);
+						}
+						f.setFieldValue(obj,subobj);
+					}
+					else{
+						//Ignore primitive (non-class) fields
+						log.fine("deser: ignoring primitive field:"+f.getField().getName());
+					}
 				}
-				else if(f.getFieldType()==FieldInfo.FieldType.USER){
-					//try the serializer
-					if(log.isLoggable(Level.FINE))log.fine("deserializing field:"+f.getField().getName());
-					if(log.isLoggable(Level.FINE))log.fine("val="+rs.getString(f.getField().getName()));
-					Object subobj=fieldSerializer.deserialize(f.getFieldClass(),f.getField().getName(),rs.getString(f.getField().getName()));
-					f.setFieldValue(obj,subobj);
-				}
-				else{
-					//Ignore primitive (non-class) fields
-					log.fine("deser: ignoring primitive field:"+f.getField().getName());
+				catch(java.sql.SQLSyntaxErrorException e){
+					//Ignores null columns in db
 				}
 			}
 			return obj;
+
+		}
+		catch(Exception e){
+			if(e instanceof RuntimeException){
+				throw (RuntimeException)e;
+			}
+			else{
+				throw new RuntimeException(e);
+			}
+		}
+
+	}
+
+	public static SpaceDocument deserializeDocument(SpaceTypeDescriptor desc,ResultSet rs,FieldSerializer fieldSerializer){
+
+		try{
+
+			ResultSetMetaData rsm=rs.getMetaData();
+			int colcnt=rsm.getColumnCount();
+			if(colcnt==1)return null;
+
+			//TODO : Cache this
+			Map<String,SpacePropertyDescriptor> fixed=new HashMap<String,SpacePropertyDescriptor>();
+			for(int i=0;i<desc.getNumOfFixedProperties();i++){
+				SpacePropertyDescriptor d=desc.getFixedProperty(i);
+				fixed.put(d.getName(),d);
+			}
+
+			SpaceDocument doc=new SpaceDocument(desc.getTypeName());
+
+			for(int i=1;i<=rsm.getColumnCount();i++){
+				SpacePropertyDescriptor spd=fixed.get(rsm.getColumnName(i));
+				//EXPLICIT
+				if(spd!=null){
+					//Relying on JDBC conversion
+					doc.setProperty(rsm.getColumnName(i), rs.getObject(i));
+				}
+				//INFER
+				else{
+					if(rsm.getColumnType(i)==Types.CHAR ||
+							rsm.getColumnType(i)==Types.LONGNVARCHAR ||
+							rsm.getColumnType(i)==Types.LONGVARCHAR ||
+							rsm.getColumnType(i)==Types.NCHAR ||
+							rsm.getColumnType(i)==Types.VARCHAR
+					){
+						doc.setProperty(rsm.getColumnName(i),fieldSerializer.deserialize(rs.getString(i)));
+					}
+					else if(rsm.getColumnType(i)==Types.REAL || 
+							rsm.getColumnType(i)==Types.FLOAT ||
+							rsm.getColumnType(i)==Types.DOUBLE ||
+							rsm.getColumnType(i)==Types.DECIMAL ||
+							rsm.getColumnType(i)==Types.NUMERIC 
+					){
+						doc.setProperty(rsm.getColumnName(i),rs.getDouble(i));
+					}
+					else if(rsm.getColumnType(i)==Types.INTEGER ||
+							rsm.getColumnType(i)==Types.SMALLINT ||
+							rsm.getColumnType(i)==Types.TINYINT){
+						doc.setProperty(rsm.getColumnName(i),rs.getInt(i));
+					}
+				}
+			}
+
+			return doc;
 
 		}
 		catch(Exception e){
@@ -101,7 +182,7 @@ class FieldInfo{
 		PRIMITIVE,
 		USER
 	};
-	
+
 	public String toString(){
 		StringBuilder sb=new StringBuilder();
 		if(field==null)return "{null field}";
@@ -191,7 +272,7 @@ class FieldInfo{
 	public Method getSetter() {
 		return setter;
 	}
-	
+
 	public FieldType getFieldType() {
 		return fieldType;
 	}
