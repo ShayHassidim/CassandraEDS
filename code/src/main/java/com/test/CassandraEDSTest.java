@@ -17,14 +17,12 @@ public class CassandraEDSTest implements Runnable{
 	public static void main(String[] args) throws Exception {
 		
 		gigaspace = new GigaSpaceConfigurer(new UrlSpaceConfigurer("jini://*/*/mySpace")).gigaSpace();
-
 		Thread.sleep(2000);
 
 		simpleTest();
+		//documentTest();
 		
-//		complexTest();
-		
-		//new CassandraEDSTest().documentTest();
+		//complexTest();
 		
 	}
 
@@ -53,23 +51,38 @@ public class CassandraEDSTest implements Runnable{
 		new CassandraEDSTest().run();
 	}
 	
-	public void documentTest(){
-		/*gigaspace.getTypeManager().registerTypeDescriptor(new SpaceTypeDescriptorBuilder("com_test_MyData").
+	static public void documentTest(){
+		
+		gigaspace.getTypeManager().registerTypeDescriptor(new SpaceTypeDescriptorBuilder("com.test.MyData").
 				idProperty("id").
-				addFixedProperty("fixed",String.class).
+				addFixedProperty("id",Long.class).
+				addFixedProperty("first",String.class).
+				addFixedProperty("last",String.class).
+				addFixedProperty("age",Integer.class).
 				create()
-				);*/
+				);
 		
-		SpaceDocument doc=new SpaceDocument("com_test_MyData");
-		doc.setProperty("id", 9999);
-		doc.setProperty("first","f1");
-		doc.setProperty("last","l1");
-		doc.setProperty("age",30);
-		
-		gigaspace.write(doc);
-		
-		
-		if(true)return;
+		for (int i=21;i<31;i++)
+		{
+			SpaceDocument doc=new SpaceDocument("com.test.MyData");
+			doc.setProperty("id", 10 + i);
+			doc.setProperty("first","f" +i);
+			doc.setProperty("last","l" +i);
+			doc.setProperty("age",30 + i);
+			gigaspace.write(doc);
+		}
+
+		for (int i=200;i<210;i++)
+		{
+			SpaceDocument doc=new SpaceDocument("com.test.MyData");
+			doc.setProperty("id", 100 + i);
+			doc.setProperty("first","f" +i);
+			doc.setProperty("last","l" +i);
+			doc.setProperty("age",30 + i);
+			doc.setProperty("dynamic" + i, "test"+i);
+			doc.setProperty("dynamicX" + i, "testX"+i);
+			gigaspace.write(doc);
+		}
 		
 	}
 	

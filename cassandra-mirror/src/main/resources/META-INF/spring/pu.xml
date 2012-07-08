@@ -38,8 +38,8 @@
 		<!-- These no doubt need tweaking -->
 		<property name="idleConnectionTestPeriod" value="60" />
 		<property name="idleMaxAge" value="240" />
-		<property name="maxConnectionsPerPartition" value="1000" />
-		<property name="minConnectionsPerPartition" value="10" />
+		<property name="maxConnectionsPerPartition" value="10" />
+		<property name="minConnectionsPerPartition" value="2" />
 		<property name="partitionCount" value="3" />
 		<property name="acquireIncrement" value="5" />
 		<property name="statementsCacheSize" value="100" />
@@ -59,8 +59,7 @@
 	    <os-core:source-space name="${space.name}" backups="${space.backups}" partitions="${space.partitions}" />
 		<os-core:properties>
 			<props>
-				<prop key="space-config.external-data-source.data-class">com.j_spaces.core.IGSEntry</prop>
-				<prop key="space-config.persistent.StorageAdapterClass">com.j_spaces.sadapter.datasource.DataAdapter"</prop>
+				<prop key="space-config.external-data-source.data-class">com.gigaspaces.document.SpaceDocument</prop>
 			</props>
 		</os-core:properties>
 	</os-core:mirror>
