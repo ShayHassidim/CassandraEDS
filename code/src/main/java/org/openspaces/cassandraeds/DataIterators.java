@@ -15,7 +15,7 @@ import com.j_spaces.core.client.SQLQuery;
 
 /**
  * Factories for iterators
- * 
+ *
  * @author DeWayne
  *
  */
@@ -29,17 +29,17 @@ public class DataIterators {
 	public static <T> SQLIterator<T> newSQLIterator(SQLQuery<T> query,FieldSerializer fieldSerializer,Class<?>[] classes,Connection cn){
 		return new SQLIterator<T>(query,fieldSerializer,classes,cn);
 	}
-	
+
 	public static SQLDocumentIterator newSQLDocumentIterator(SQLQuery<Object> query,FieldSerializer fieldSerializer,SpaceTypeDescriptor[] desc,Connection cn){
 		return new SQLDocumentIterator(query,fieldSerializer,desc,cn);
 	}
-	
+
 	public static DataIterator<Object> newMultiDocumentIterator(
 			SpaceTypeDescriptor[] doctypes,
 			FieldSerializer fieldSerializer, Connection cn) {
 		return new MultiDocumentIterator(doctypes,fieldSerializer,cn);
 	}
-	
+
 	public static class SQLDocumentIterator implements DataIterator<Object>
 	{
 		private ResultSet rs;
@@ -106,7 +106,7 @@ public class DataIterators {
 			}catch(Exception e){
 			}
 		}
-		
+
 		private ResultSet nextResultset(){
 			curIndex++;
 			if(curIndex>=desc.length)return null;
@@ -115,7 +115,7 @@ public class DataIterators {
 
 			try{
 				Statement statement = conn.createStatement();
-				ResultSet rs=statement.executeQuery("select * from "+desc[curIndex].getTypeName());
+				ResultSet rs=statement.executeQuery("select * from "+desc[curIndex].getTypeName().replaceAll("\\.", "_"));
 				statement.close();
 				return rs;
 			}
@@ -260,8 +260,8 @@ public class DataIterators {
 	}
 
 	/**
-	 * Iterates over all listed classes 
-	 * 
+	 * Iterates over all listed classes
+	 *
 	 * @author DeWayne
 	 *
 	 * @param <T>
@@ -281,14 +281,9 @@ public class DataIterators {
 			this.rs=nextResultset();
 		}
 
-		public boolean hasNext() {
-			try{
-				if(curIndex<classes.size()-1)return false;
-				return !rs.isLast();
-			}catch(SQLException e){
-				throw new RuntimeException(e);
-			}
-		}
+        public boolean hasNext() {
+            return curIndex <= classes.size() - 1;
+        }
 
 		public Object next() {
 			try{
@@ -301,7 +296,6 @@ public class DataIterators {
 				while(true){
 					rs=nextResultset();
 					if(rs==null)return null;
-					if(!rs.next())continue;
 					while(rs.next()){
 						Object res=Util.deserializeObject(classes.get(curIndex),rs,fieldSerializer);
 						if(res!=null)return res;
@@ -355,7 +349,7 @@ public class DataIterators {
 		private final Connection cn;
 		private ResultSet rs;
 		private int curIndex=-1;
-		
+
 		public MultiDocumentIterator(
 				SpaceTypeDescriptor[] doctypes,
 				FieldSerializer fieldSerializer, Connection cn) {
@@ -366,12 +360,7 @@ public class DataIterators {
 		}
 
 		public boolean hasNext() {
-			try{
-				if(curIndex<doctypes.length-1)return false;
-				return !rs.isLast();
-			}catch(SQLException e){
-				throw new RuntimeException(e);
-			}
+            return curIndex <= doctypes.length - 1;
 		}
 
 		public Object next() {
@@ -385,7 +374,6 @@ public class DataIterators {
 				while(true){
 					rs=nextResultset();
 					if(rs==null)return null;
-					if(!rs.next())continue;
 					while(rs.next()){
 						Object res=Util.deserializeDocument(doctypes[curIndex],rs,fieldSerializer);
 						if(res!=null)return res;
@@ -415,7 +403,7 @@ public class DataIterators {
 
 			try{
 				Statement statement = cn.createStatement();
-				ResultSet rs=statement.executeQuery("select * from "+doctypes[curIndex].getTypeName());
+				ResultSet rs=statement.executeQuery("select * from "+doctypes[curIndex].getTypeName().replaceAll("\\.", "_"));
 				statement.close();
 				return rs;
 			}

@@ -46,19 +46,22 @@
 		<constructor-arg>
 			<array>
 				<value>com.test.MyData</value>
+                <value>com.test.SecondTestData</value>
 			</array>
 		</constructor-arg>
 	</bean>
 
 <!-- SAMPLE SPACEDOCUMENT CONFIG -->
-<!-- 
-	<bean id="space" class="org.openspaces.core.space.UrlSpaceFactoryBean">
+	<!--<bean id="space" class="org.openspaces.core.space.UrlSpaceFactoryBean">
 		<property name="url" value="/./mySpace"/>
 		<property name="mirror" value="true"/>
 		<property name="schema" value="persistent"/>
 		<property name="externalDataSource"><ref bean="cassandraEDS"/></property>
 		<property name="spaceTypes">
-			<list><ref bean="mydata"/></list>
+			<list>
+                <ref bean="mydata"/>
+                <ref bean="secondData" />
+            </list>
 		</property>
 		<property name="properties">
 			<props>
@@ -75,19 +78,27 @@
 		<constructor-arg>
 			<list>
 				<ref bean="mydata"/>
+                <ref bean="secondData"/>
 			</list>
 		</constructor-arg>
 	</bean>
 	
 	<bean name="mydata" class="org.openspaces.core.config.GigaSpaceDocumentTypeDescriptorFactoryBean">
-		<property name="typeName" value="com_test_MyData"/>
+		<property name="typeName" value="com.test.MyData"/>
 		<property name="idProperty">
            <bean class="org.openspaces.core.config.SpaceIdProperty">
 	         <property name="propertyName" value="id"/>    	    
            </bean>
 		</property>
 	</bean>
--->
+    <bean name="secondData" class="org.openspaces.core.config.GigaSpaceDocumentTypeDescriptorFactoryBean">
+		<property name="typeName" value="com.test.SecondTestData"/>
+		<property name="idProperty">
+           <bean class="org.openspaces.core.config.SpaceIdProperty">
+	         <property name="propertyName" value="id"/>
+           </bean>
+		</property>
+	</bean>-->
 <!-- END SPACEDOCUMENT CONFIG -->
 	
 	<!-- CONNECTION POOL -->
@@ -107,7 +118,6 @@
 		<property name="statementsCacheSize" value="100" />
 		<property name="releaseHelperThreads" value="3" />
 	</bean>
-
 
 
 

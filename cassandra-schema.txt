@@ -3,6 +3,7 @@ use test;
 
 create column family com_test_MyData with
   comparator = UTF8Type and
+  key_validation_class = UTF8Type and
   column_metadata =
   [
     {column_name: first, validation_class: UTF8Type},
@@ -10,5 +11,12 @@ create column family com_test_MyData with
     {column_name: id, validation_class: UTF8Type, index_type: KEYS}
     {column_name: age, validation_class: UTF8Type, index_type: KEYS}
   ];
-  
+create column family com_test_SecondTestData with
+  comparator = UTF8Type and
+  key_validation_class = UTF8Type and
+  column_metadata =
+  [
+    {column_name: info, validation_class: UTF8Type},
+    {column_name: id, validation_class: UTF8Type, index_type: KEYS}
+  ];
   

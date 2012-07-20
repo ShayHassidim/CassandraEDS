@@ -15,15 +15,15 @@ public class CassandraEDSTest implements Runnable{
 	static long MAX_WRITE = 5000;
 	static long MAX_BATCH_WRITE = 500;
 	public static void main(String[] args) throws Exception {
-		
+
 		gigaspace = new GigaSpaceConfigurer(new UrlSpaceConfigurer("jini://*/*/mySpace")).gigaSpace();
 		Thread.sleep(2000);
 
 		simpleTest();
 		//documentTest();
-		
+
 		//complexTest();
-		
+
 	}
 
 
@@ -50,9 +50,9 @@ public class CassandraEDSTest implements Runnable{
 		MAX_BATCH_WRITE = 2;
 		new CassandraEDSTest().run();
 	}
-	
+
 	static public void documentTest(){
-		
+
 		gigaspace.getTypeManager().registerTypeDescriptor(new SpaceTypeDescriptorBuilder("com.test.MyData").
 				idProperty("id").
 				addFixedProperty("id",Long.class).
@@ -61,7 +61,13 @@ public class CassandraEDSTest implements Runnable{
 				addFixedProperty("age",Integer.class).
 				create()
 				);
-		
+        gigaspace.getTypeManager().registerTypeDescriptor(new SpaceTypeDescriptorBuilder("com.test.SecondTestData").
+        				idProperty("id").
+        				addFixedProperty("id", Long.class).
+        				addFixedProperty("info", String.class).
+        				create()
+        				);
+
 		for (int i=21;i<31;i++)
 		{
 			SpaceDocument doc=new SpaceDocument("com.test.MyData");
@@ -83,18 +89,24 @@ public class CassandraEDSTest implements Runnable{
 			doc.setProperty("dynamicX" + i, "testX"+i);
 			gigaspace.write(doc);
 		}
-		
-	}
-	
+
+        for (int i = 21; i < 31; i++) {
+            SpaceDocument doc = new SpaceDocument("com.test.SecondTestData");
+            doc.setProperty("id", 10 + i);
+            doc.setProperty("info", "info_" + i);
+            gigaspace.write(doc);
+        }
+
+    }
+
 	@Override
 	public void run() {
-		
 
 		MyData o = new MyData();
-				
+
 		Random rand = new Random();
-		long offset = Thread.currentThread().getId() * 100; 
-		
+		long offset = Thread.currentThread().getId() * 100;
+
 		// Testing Write
 		System.out.println("Thread ID:" + Thread.currentThread().getId() + " Testing Write");
 		for (long i=offset ;i<MAX_WRITE + offset ;i++)
@@ -105,6 +117,15 @@ public class CassandraEDSTest implements Runnable{
 			o.setId(i);
 			gigaspace.write(o);
 		}
+
+        // Testing Write SecondTestData
+        System.out.println("Thread ID:" + Thread.currentThread().getId() + " Testing Write SecondTestData");
+        for (long i = offset; i < MAX_WRITE + offset; i++) {
+            SecondTestData secondTestData = new SecondTestData();
+            secondTestData.setId(i);
+            secondTestData.setInfo("info_" + i);
+            gigaspace.write(secondTestData);
+        }
 
 		// Testing Update
 		System.out.println("Thread ID:" + Thread.currentThread().getId() + " Testing Update");
@@ -125,7 +146,7 @@ public class CassandraEDSTest implements Runnable{
 			o.setId(i);
 			gigaspace.take(o);
 		}
-		
+
 		// Testing WriteMultiple/UpdateMultiple
 		System.out.println("Thread ID:" + Thread.currentThread().getId() + " Testing WriteMultiple/UpdateMultiple");
 		for (int j=0;j<MAX_BATCH_WRITE ;j++)
