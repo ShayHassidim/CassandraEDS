@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.gigaspaces.document.DocumentProperties;
 import org.apache.hadoop.conf.Configuration;
 
 import com.gigaspaces.document.SpaceDocument;
@@ -116,13 +117,18 @@ public class Util {
 							rsm.getColumnType(i)==Types.NCHAR ||
 							rsm.getColumnType(i)==Types.VARCHAR
 					){
-						doc.setProperty(rsm.getColumnName(i),fieldSerializer.deserialize(rs.getString(i)));
+                        Object deserializedField = fieldSerializer.deserialize(rs.getString(i));
+                        if (deserializedField instanceof DocumentProperties) {
+                            doc.addProperties((DocumentProperties) deserializedField);
+                        } else {
+                            doc.setProperty(rsm.getColumnName(i), deserializedField);
+                        }
 					}
-					else if(rsm.getColumnType(i)==Types.REAL || 
+					else if(rsm.getColumnType(i)==Types.REAL ||
 							rsm.getColumnType(i)==Types.FLOAT ||
 							rsm.getColumnType(i)==Types.DOUBLE ||
 							rsm.getColumnType(i)==Types.DECIMAL ||
-							rsm.getColumnType(i)==Types.NUMERIC 
+							rsm.getColumnType(i)==Types.NUMERIC
 					){
 						doc.setProperty(rsm.getColumnName(i),rs.getDouble(i));
 					}
@@ -150,9 +156,9 @@ public class Util {
 }
 
 /**
- * A cache to avoid repeated introspection 
+ * A cache to avoid repeated introspection
  * Valid fields for the purposes of this EDS are public ones with setters
- * 
+ *
  */
 
 class FieldInfoCache{
@@ -205,7 +211,7 @@ class FieldInfo{
 		return fil;
 	}
 
-	public static FieldInfo fromField(Field f){			
+	public static FieldInfo fromField(Field f){
 		for(Method m:f.getDeclaringClass().getDeclaredMethods()){
 			if(m.getName().equals("set"+(f.getName().substring(0,1).toUpperCase()+f.getName().substring(1))) && ((m.getModifiers()&Modifier.PUBLIC)!=0)){
 				try{
