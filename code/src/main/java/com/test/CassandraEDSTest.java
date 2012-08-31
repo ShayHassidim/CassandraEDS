@@ -82,13 +82,14 @@ public class CassandraEDSTest implements Runnable{
 		{
 			SpaceDocument doc=new SpaceDocument("com.test.MyData");
 			doc.setProperty("id", 100 + i);
-			doc.setProperty("first","f" +i);
-			doc.setProperty("last","l" +i);
+			doc.setProperty("first","first" +i);
+			doc.setProperty("last","last" +i);
 			doc.setProperty("age",30 + i);
-			doc.setProperty("dynamic" + i, "test"+i);
-			doc.setProperty("dynamicX" + i, "testX"+i);
+			doc.setProperty("dynamicA" + i, "dynamicA" + i);
+			doc.setProperty("dynamicB" + i, "dynamicB" + i);
+			doc.setProperty("dynamicC" + i, "dynamicC" + i);
 			gigaspace.write(doc);
-		}
+        }
 
         for (int i = 21; i < 31; i++) {
             SpaceDocument doc = new SpaceDocument("com.test.SecondTestData");

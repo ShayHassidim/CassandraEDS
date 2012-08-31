@@ -196,6 +196,7 @@ public class DataIterators {
 		public boolean hasNext() {
 			try{
 				if(curIndex<classes.size()-1)return false;
+				if (rs==null) return false;
 				return !rs.isLast();
 			}catch(SQLException e){
 				throw new RuntimeException(e);
@@ -330,8 +331,10 @@ public class DataIterators {
 				return rs;
 			}
 			catch(Exception e){
-				if(e instanceof RuntimeException)throw((RuntimeException)e);
-				else throw new RuntimeException(e);
+				if(e instanceof RuntimeException)
+					throw((RuntimeException)e);
+				else 
+					throw new RuntimeException(e);
 			}
 		}
 

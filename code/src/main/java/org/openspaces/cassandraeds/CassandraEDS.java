@@ -41,7 +41,8 @@ public class CassandraEDS implements ManagedDataSource<Object>,BulkDataPersister
 	private final FieldSerializer fieldSerializer;
 	private final List<Class<?>> classes=new ArrayList<Class<?>>();
 	private SpaceTypeDescriptor[] doctypes;
-	
+	final String DYNAMIC_PROP_COL_NAME = "dynamic_props";
+	final String TTL_PROP_COL_NAME = "time_to_live";
 	ConcurrentHashMap<String, StringBuilder> insertSQLCache = new ConcurrentHashMap<String, StringBuilder> ();
 	ConcurrentHashMap<String,ConcurrentHashSet<String>> columnsAdded = new ConcurrentHashMap<String,ConcurrentHashSet<String>> ();
 	
@@ -115,15 +116,28 @@ public class CassandraEDS implements ManagedDataSource<Object>,BulkDataPersister
 		connectionPool.close();
 	}
 
-	void generateInsertSQL(String clazzName , StringBuilder insertQLBuf, SpaceDocument item )
+	void generateInsertSQL(String clazzName , StringBuilder insertQLBuf, BulkItem bulkItem) throws IllegalArgumentException, IllegalAccessException
 	{
 		insertQLBuf.append( "INSERT INTO " ).append( clazzName).append(" (KEY,");
-		Set<String> propsNames = item.getProperties().keySet();
-		for (Iterator<String> iterator = propsNames.iterator(); iterator.hasNext();) {
-			String propName = (String) iterator.next();
-			insertQLBuf.append( " '").append(propName).append( "',");
+		//Set<String> propsNames = item.getProperties().keySet();
+		
+		String fixedPropsNames [] = getFixedFields(bulkItem);
+		for (int i = 0; i < fixedPropsNames.length; i++) {
+			insertQLBuf.append( " '").append(fixedPropsNames[i]).append( "'");
+			
+			if (i!=fixedPropsNames.length-1)
+			{
+				insertQLBuf.append( ",");
+			}
 		}
-		insertQLBuf.deleteCharAt(insertQLBuf.length()-1);
+
+		if (isDynamicProps(bulkItem))
+		{
+			insertQLBuf.append( ",'").append(DYNAMIC_PROP_COL_NAME).append( "'");
+		}
+
+		insertQLBuf.append( ",'").append(TTL_PROP_COL_NAME).append( "'");
+
 	}
 	
 	public String stackTraceToString(Throwable e) {
@@ -143,7 +157,12 @@ public class CassandraEDS implements ManagedDataSource<Object>,BulkDataPersister
 			return false;
 		return (ep.getDynamicProperties().size() >0);
 	}
-	
+
+    long getLease(BulkItem item) throws IllegalArgumentException, IllegalAccessException {
+        IEntryPacket ep = (IEntryPacket) _dataPacketField.get(item);
+        return ep.getTTL();
+    }
+
 	Set<String> getDynamicProps(BulkItem item) throws IllegalArgumentException, IllegalAccessException
 	{
 		IEntryPacket ep = (IEntryPacket)_dataPacketField.get(item);
@@ -152,6 +171,20 @@ public class CassandraEDS implements ManagedDataSource<Object>,BulkDataPersister
 		return ep.getDynamicProperties().keySet();
 	}
 
+    String serializeDynamicProps(BulkItem item) throws IllegalArgumentException, IllegalAccessException {
+        IEntryPacket ep = (IEntryPacket) _dataPacketField.get(item);
+
+        if (ep.getDynamicProperties() == null)
+            return null;
+
+        return fieldSerializer.serialize(ep.getDynamicProperties());
+    }
+
+    String[] getFixedFields(BulkItem item) throws IllegalArgumentException, IllegalAccessException {
+        IEntryPacket ep = (IEntryPacket) _dataPacketField.get(item);
+        return ep.getTypeDescriptor().getPropertiesNames();
+    }
+	
 	void addColumn(Connection con , String familyName , String colName , String colType)
 	{
 		// make sure we won't add a column we already added
@@ -162,7 +195,6 @@ public class CassandraEDS implements ManagedDataSource<Object>,BulkDataPersister
 		String alterTableCql = "ALTER TABLE " +familyName+" ADD " + colName  + " " +colType ;
 		try {
 			log.info("alterTableCql :  "+alterTableCql );
-			executeCQL(con, alterTableCql);
 			// update columnsAdded list with newly added column
 			if (columnsAdded.containsKey(familyName))
 				columnsAdded.get(familyName).add(colName);
@@ -172,8 +204,9 @@ public class CassandraEDS implements ManagedDataSource<Object>,BulkDataPersister
 				colsAddedSet.add(colName);
 				columnsAdded.put(familyName, colsAddedSet);
 			}
+			executeCQL(con, alterTableCql);
 		} catch (Exception e) {
-			String error = "problem deleting: " + alterTableCql + " \n" + stackTraceToString(e);
+			String error = "problem alter table: " + alterTableCql + " \n" + stackTraceToString(e);
 			log.info(error);
 			e.printStackTrace();
 			throw new RuntimeException(error);
@@ -212,7 +245,7 @@ public class CassandraEDS implements ManagedDataSource<Object>,BulkDataPersister
 						if (insertQLBuf==null)
 						{
 							insertQLBuf = new StringBuilder();
-							generateInsertSQL(clazzName , insertQLBuf, item);
+							generateInsertSQL(clazzName , insertQLBuf, bulkItem);
 							insertSQLCache.put(clazzName,new StringBuilder(insertQLBuf));
 						}
 						else
@@ -223,26 +256,35 @@ public class CassandraEDS implements ManagedDataSource<Object>,BulkDataPersister
 					else
 					{
 						// check if there are dynamic properties. If so alter the schema and execute the Insert SQL again
-						Set<String> dynamicColumns = getDynamicProps(bulkItem);
-						if (dynamicColumns!=null)
-						{
-							for (String coldName : dynamicColumns) {
-								addColumn(con,clazzName,coldName,"varchar");
-							}
+						if (isDynamicProps(bulkItem)){
+							addColumn(con,clazzName,DYNAMIC_PROP_COL_NAME,"varchar");
 						}
 						
 						insertQLBuf = new StringBuilder();
-						generateInsertSQL(clazzName , insertQLBuf, item);
+						generateInsertSQL(clazzName , insertQLBuf, bulkItem);
 					}
 					
 					insertQLBuf.append( ") VALUES (").append(ID).append(",");
 					
-					Set<String> propsNames = item.getProperties().keySet();
-					for (Iterator<String> iterator = propsNames.iterator(); iterator.hasNext();) {
-						String propName = (String) iterator.next();
-						insertQLBuf= insertQLBuf.append(getValue(item.getProperty(propName))).append(",");
+					String fixedPropsNames [] = getFixedFields(bulkItem);
+					for (int i = 0; i < fixedPropsNames.length; i++) {
+						insertQLBuf= insertQLBuf.append(getValue(item.getProperty(fixedPropsNames[i]))).append(",");
 					}
-					String insertQL = insertQLBuf.deleteCharAt(insertQLBuf.length()-1).append(")").toString();
+
+					// store Dynamic Props
+					if (isDynamicProps(bulkItem))
+					{
+						String dynamicPropsStr = serializeDynamicProps(bulkItem);
+						dynamicPropsStr = getValue(dynamicPropsStr);
+						insertQLBuf= insertQLBuf.append(dynamicPropsStr).append(",");
+					}
+
+					// store lease time
+					long ttl = getLease(bulkItem);
+					String ttlStr = getValue(ttl);
+					insertQLBuf= insertQLBuf.append(ttlStr);
+										
+					String insertQL = insertQLBuf.append(")").toString();
 					batchSQL.append(insertQL).append(" "); 
 
 					break;
@@ -251,17 +293,36 @@ public class CassandraEDS implements ManagedDataSource<Object>,BulkDataPersister
 					StringBuilder updateQL=new StringBuilder("");
 					updateQL.append("UPDATE ").append(clazzName).append(" SET");
 
-					propsNames = item.getProperties().keySet();
-					for (Iterator<String> iterator = propsNames.iterator(); iterator.hasNext();) {
-						String propName = (String) iterator.next();
+					fixedPropsNames = getFixedFields(bulkItem);
+					for (int i = 0; i < fixedPropsNames.length; i++) {						
 						updateQL.
 						append(" '").
-						append(propName).
+						append(fixedPropsNames[i]).
 						append("'=").
-						append(getValue(item.getProperty(propName))).
+						append(getValue(item.getProperty(fixedPropsNames[i]))).
+						append(",");
+
+					}
+
+					if (isDynamicProps(bulkItem)) {
+						String dynamicPropsStr = serializeDynamicProps(bulkItem);
+						dynamicPropsStr = getValue(dynamicPropsStr);
+						
+						updateQL.
+						append(" '").
+						append(DYNAMIC_PROP_COL_NAME).
+						append("'=").
+						append(dynamicPropsStr).
 						append(",");
 					}
-					updateQL.deleteCharAt(updateQL.length()-1);
+
+					ttl = getLease(bulkItem);
+					updateQL.
+					append(" '").
+					append(TTL_PROP_COL_NAME).
+					append("'=").
+					append(getValue(ttl));
+					
 					updateQL.append(" WHERE KEY=").append(ID);
 					batchSQL.append(updateQL).append(" "); 
 					break;
@@ -298,8 +359,10 @@ public class CassandraEDS implements ManagedDataSource<Object>,BulkDataPersister
 		try {
 			cn=connectionPool.getConnection();
 
-			if (doctypes==null) return DataIterators.newMultiClassIterator(classes,fieldSerializer,cn);
-			else return DataIterators.newMultiDocumentIterator(doctypes,fieldSerializer,cn);
+			if (doctypes==null) 
+				return DataIterators.newMultiClassIterator(classes,fieldSerializer,cn);
+			else 
+				return DataIterators.newMultiDocumentIterator(doctypes,fieldSerializer,cn);
 		} catch (SQLException e) {
 			throw new DataSourceException(e);
 		}
@@ -315,8 +378,10 @@ public class CassandraEDS implements ManagedDataSource<Object>,BulkDataPersister
 			if(e instanceof RuntimeException)throw (RuntimeException)e;
 			else throw new RuntimeException(e);
 		}
-		if (doctypes==null)return DataIterators.newSQLIterator(query, fieldSerializer,(Class<?>[])classes.toArray(), cn); 
-		else return DataIterators.newSQLDocumentIterator(query,fieldSerializer,doctypes,cn);
+		if (doctypes==null)
+			return DataIterators.newSQLIterator(query, fieldSerializer,(Class<?>[])classes.toArray(), cn); 
+		else 
+			return DataIterators.newSQLDocumentIterator(query,fieldSerializer,doctypes,cn);
 	}
 
 
