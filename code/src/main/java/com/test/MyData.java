@@ -1,6 +1,7 @@
 package com.test;
 
 import com.gigaspaces.annotation.pojo.SpaceId;
+import com.gigaspaces.annotation.pojo.SpaceLeaseExpiration;
 
 public class MyData {
 
@@ -8,6 +9,7 @@ public class MyData {
 	String last;
 	Integer age;
 	Long id;
+    private Long lease;
 	
 	public String getFirst() {
 		return first;
@@ -35,4 +37,13 @@ public class MyData {
 	public void setId(Long id) {
 		this.id = id;
 	}
+
+    @SpaceLeaseExpiration
+    public Long getLease() {
+        return lease;
+    }
+
+    public void setLease(Long lease) {
+        this.lease = lease;
+    }
 }

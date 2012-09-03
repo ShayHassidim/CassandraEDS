@@ -4,11 +4,7 @@ import java.lang.reflect.Field;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Properties;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -160,7 +156,7 @@ public class CassandraEDS implements ManagedDataSource<Object>,BulkDataPersister
 
     long getLease(BulkItem item) throws IllegalArgumentException, IllegalAccessException {
         IEntryPacket ep = (IEntryPacket) _dataPacketField.get(item);
-        return ep.getTTL();
+        return ep.getTTL() + new Date().getTime();
     }
 
 	Set<String> getDynamicProps(BulkItem item) throws IllegalArgumentException, IllegalAccessException

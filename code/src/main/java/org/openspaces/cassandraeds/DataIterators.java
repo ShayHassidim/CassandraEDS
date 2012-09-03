@@ -1,13 +1,16 @@
 package org.openspaces.cassandraeds;
 
+import java.lang.reflect.InvocationTargetException;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.logging.Logger;
 
+import com.gigaspaces.annotation.pojo.SpaceLeaseExpiration;
 import com.gigaspaces.datasource.DataIterator;
 import com.gigaspaces.document.SpaceDocument;
 import com.gigaspaces.metadata.SpaceTypeDescriptor;
@@ -290,7 +293,7 @@ public class DataIterators {
 			try{
 				while(rs.next()){
 					Object res=Util.deserializeObject(classes.get(curIndex),rs,fieldSerializer);
-					if(res!=null)return res;
+					if(res!=null && isTTLNotExpired(res))return res;
 				}
 
 				//find next resultset with data
@@ -299,7 +302,7 @@ public class DataIterators {
 					if(rs==null)return null;
 					while(rs.next()){
 						Object res=Util.deserializeObject(classes.get(curIndex),rs,fieldSerializer);
-						if(res!=null)return res;
+						if(res!=null && isTTLNotExpired(res))return res;
 					}
 				}
 			}
@@ -333,10 +336,27 @@ public class DataIterators {
 			catch(Exception e){
 				if(e instanceof RuntimeException)
 					throw((RuntimeException)e);
-				else 
+				else
 					throw new RuntimeException(e);
 			}
 		}
+
+        private boolean isTTLNotExpired(Object object) {
+            for (FieldInfo field : Util.getFields(classes.get(curIndex))) {
+                if (field.getGetter().getAnnotation(SpaceLeaseExpiration.class) != null) {
+                    try {
+                        return (Long) field.getFieldValue(object) >= new Date().getTime();
+                    } catch (IllegalAccessException e) {
+                        log.severe("Cannot access Lease field - assuming TTL is not expired, returning true");
+                        return true;
+                    } catch (InvocationTargetException e) {
+                        log.severe("Cannot get Lease value - assuming TTL is not expired, returning true");
+                        return true;
+                    }
+                }
+            }
+            return true;
+        }
 
 	}
 
@@ -370,7 +390,7 @@ public class DataIterators {
 			try{
 				while(rs.next()){
 					Object res=Util.deserializeDocument(doctypes[curIndex],rs,fieldSerializer);
-					if(res!=null)return res;
+                    if (res != null && isTTLNotExpired((SpaceDocument) res)) return res;
 				}
 
 				//find next resultset with data
@@ -379,7 +399,7 @@ public class DataIterators {
 					if(rs==null)return null;
 					while(rs.next()){
 						Object res=Util.deserializeDocument(doctypes[curIndex],rs,fieldSerializer);
-						if(res!=null)return res;
+                        if (res != null && isTTLNotExpired((SpaceDocument) res)) return res;
 					}
 				}
 			}
@@ -415,6 +435,10 @@ public class DataIterators {
 				else throw new RuntimeException(e);
 			}
 		}
+
+        private boolean isTTLNotExpired(SpaceDocument doc){
+            return Long.valueOf(doc.<String>getProperty("time_to_live")) >= new Date().getTime();
+        }
 
 	}
 

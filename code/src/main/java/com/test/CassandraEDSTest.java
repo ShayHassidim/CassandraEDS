@@ -88,7 +88,7 @@ public class CassandraEDSTest implements Runnable{
 			doc.setProperty("dynamicA" + i, "dynamicA" + i);
 			doc.setProperty("dynamicB" + i, "dynamicB" + i);
 			doc.setProperty("dynamicC" + i, "dynamicC" + i);
-			gigaspace.write(doc);
+			gigaspace.write(doc, 120000);
         }
 
         for (int i = 21; i < 31; i++) {
@@ -116,7 +116,7 @@ public class CassandraEDSTest implements Runnable{
 			o.setFirst("first" + i);
 			o.setLast("last" + i);
 			o.setId(i);
-			gigaspace.write(o);
+			gigaspace.write(o, 120000);
 		}
 
         // Testing Write SecondTestData

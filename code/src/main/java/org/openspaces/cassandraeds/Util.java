@@ -1,6 +1,7 @@
 package org.openspaces.cassandraeds;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.sql.ResultSet;
@@ -15,6 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.gigaspaces.annotation.pojo.SpaceLeaseExpiration;
 import com.gigaspaces.document.DocumentProperties;
 import org.apache.hadoop.conf.Configuration;
 
@@ -47,6 +49,9 @@ public class Util {
 			if(colcnt==1)return null;
 			for(FieldInfo f:fieldCache.getFields(clazz)){
 				try{
+                    if (f.getGetter().getAnnotation(SpaceLeaseExpiration.class) != null) {
+                        f.setValueFromString(obj, rs.getString("time_to_live"));
+                    } else
 					// Basic deserialization from string: assume class has valueOf method
 					if(f.getFieldType()==FieldInfo.FieldType.JAVA_LANG){
 						f.setValueFromString(obj, rs.getString(f.getField().getName()));
@@ -183,6 +188,8 @@ class FieldInfo{
 	private Method stringValueOf=null;
 	private Class<?> fieldClass=null;
 	private Method setter=null;
+    private Method getter;
+
 	public enum FieldType{
 		JAVA_LANG,
 		PRIMITIVE,
@@ -212,10 +219,10 @@ class FieldInfo{
 	}
 
 	public static FieldInfo fromField(Field f){
-		for(Method m:f.getDeclaringClass().getDeclaredMethods()){
-			if(m.getName().equals("set"+(f.getName().substring(0,1).toUpperCase()+f.getName().substring(1))) && ((m.getModifiers()&Modifier.PUBLIC)!=0)){
-				try{
-					FieldInfo fi=new FieldInfo();
+        FieldInfo fi=new FieldInfo();
+        for(Method m:f.getDeclaringClass().getDeclaredMethods()){
+            if(m.getName().equals("set"+(f.getName().substring(0,1).toUpperCase()+f.getName().substring(1))) && ((m.getModifiers()&Modifier.PUBLIC)!=0)){
+                try{
 					fi.field=f;
 
 					//figure out field type
@@ -243,7 +250,9 @@ class FieldInfo{
 					//ignore
 					e.printStackTrace();
 				}
-			}
+			}else if(m.getName().equals("get"+(f.getName().substring(0,1).toUpperCase()+f.getName().substring(1))) && ((m.getModifiers()&Modifier.PUBLIC)!=0)){
+                fi.getter = m;
+            }
 		}
 		return null;
 	}
@@ -282,6 +291,14 @@ class FieldInfo{
 	public FieldType getFieldType() {
 		return fieldType;
 	}
+
+    public Method getGetter(){
+        return getter;
+    }
+
+    public Object getFieldValue(Object obj, Object... args) throws InvocationTargetException, IllegalAccessException {
+        return getter.invoke(obj, args);
+    }
 
 }
 
