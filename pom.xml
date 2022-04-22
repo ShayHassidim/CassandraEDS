@@ -9,7 +9,7 @@
 
 	<properties>
 		<gigaVersion>9.0.0</gigaVersion>
-		<springVersion>3.1.1.RELEASE</springVersion>
+		<springVersion>5.3.19</springVersion>
 	</properties>
 
 	<modules>
